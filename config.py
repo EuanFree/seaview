@@ -1,4 +1,4 @@
-#Configuration settings for the seeView PostgreSQL database
+#Configuration settings for the seaView PostgreSQL database
 
 DB_CONFIG = {
     "dbname": "postgres",
