@@ -1,25 +1,34 @@
 from db_connect import get_connection
 
-# from sqlalchemy import Column, Integer, String, TIMESTAMP, func, create_engine
-# from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import (create_engine, Column, Integer, String, Date, DateTime,
                         ForeignKey, Enum, Boolean, Double, Table, text)
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker, registry
 import enum
 from datetime import datetime
 
-
-
-
-
 Base = declarative_base()
 
-# Association table for many-to-many relationship between tasks and resources
-task_resource_association = Table(
-    "task_resource_association", Base.metadata,
-    Column("task_id", Integer, ForeignKey("tasks.id"), primary_key=True),
-    Column("resource_id", Integer, ForeignKey("resources.id"), primary_key=True)
-)
+
+class CXTaskResourceAssociation(Base):
+    __tablename__ = "task_resource_association"
+    __table_args__ = {"schema": "seaview"}
+    task_id = Column(Integer, ForeignKey("seaview.tasks.id"), primary_key=True)
+    resource_id = Column(Integer, ForeignKey("seaview.resources.id"), primary_key=True)
+
+class CXProjectDependencyAssociation(Base):
+    __tablename__ = "project_dependency_association"
+    __table_args__ = {"schema": "seaview"}
+    predecessor_project_id = Column(Integer, ForeignKey("seaview.projects.id"), primary_key=True, nullable=True)
+    predecessor_programme_id = Column(Integer, ForeignKey("seaview.programmes.id"), primary_key=True, nullable=True)
+    successor_project_id = Column(Integer, ForeignKey("seaview.projects.id"), primary_key=True)
+
+class CXProgrammeDependencyAssociation(Base):
+    __tablename__ = "programme_dependency_association"
+    __table_args__ = {"schema": "seaview"}
+    predecessor_programme_id = Column(Integer, ForeignKey("seaview.programmes.id"), primary_key=True, nullable=True)
+    predecessor_project_id = Column(Integer, ForeignKey("seaview.projects.id"), primary_key=True, nullable=True)
+    successor_programme_id = Column(Integer, ForeignKey("seaview.programmes.id"), primary_key=True)
+
 
 class ResourceType(enum.Enum):
     """
@@ -126,7 +135,7 @@ class CXResource(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     resource_type = Column(Enum(ResourceType, name="resourcetype", schema="seaview"), nullable=False)
-    resource_department = Column(Enum(ResourceDepartment, name="resourcedepartment", schema="seaview"), nullable=False)
+    resource_department = Column(Enum(ResourceDepartment, name="resourcedepartment", schema="seaview"), nullable=True)
     email = Column(String, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     projects = relationship("CXProject", back_populates="owner")
@@ -140,41 +149,29 @@ class CXResource(Base):
     works_on_friday = Column(Boolean, default=False, nullable=False)
     works_on_saturday = Column(Boolean, default=False, nullable=False)
     works_on_sunday = Column(Boolean, default=False, nullable=False)
-    
-    line_manager_id = Column(Integer, ForeignKey("seaview.resources.id"), nullable=True)
-    line_manager = relationship("CXResource", remote_side=[id], back_populates="employees")
-
-    employees = relationship("CXResource", back_populates="line_manager", cascade="all, delete-orphan")
 
 
-class CXProjectDependencies(Base):
+class CXManagerEmployeeAssociation(Base):
     """
+    Represents the association between managers and employees.
 
+    This class defines a table to store the relationships between managers
+    and employees within the "seaview" schema. Each association links a manager
+    to an employee using their respective resource IDs as foreign keys.
+
+    :ivar __tablename__: Name of the table in the database.
+    :type __tablename__: str
+    :ivar __table_args__: Specification of the schema where the table resides.
+    :type __table_args__: dict
+    :ivar manager: Resource ID of the manager (foreign key reference).
+    :type manager: int
+    :ivar employee: Resource ID of the employee (foreign key reference).
+    :type employee: int
     """
-    __tablename__ = "project_dependencies"
+    __tablename__ = "manager_employee_associations"
     __table_args__ = {"schema": "seaview"}
-    predecessor_project_id = Column(Integer, ForeignKey("seaview.projects.id"), primary_key=True)
-    successor_project_id = Column(Integer, ForeignKey("seaview.projects.id"), primary_key=True)
-
-
-class CXPredecessorProgrammeProjectDependencies(Base):
-    """
-
-    """
-    __tablename__ = "project_programme_dependencies"
-    __table_args__ = {"schema": "seaview"}
-    successor_project_id = Column(Integer, ForeignKey("seaview.projects.id"), primary_key=True)
-    predecessor_programme_id = Column(Integer, ForeignKey("seaview.programmes.id"), primary_key=True)
-
-
-class CXPredecessorProjectProgrammeDependencies(Base):
-    """
-
-    """
-    __tablename__ = "programme_project_dependencies"
-    __table_args__ = {"schema": "seaview"}
-    predecessor_project_id = Column(Integer, ForeignKey("seaview.projects.id"), primary_key=True)
-    successor_programme_id = Column(Integer, ForeignKey("seaview.programmes.id"), primary_key=True)
+    manager = Column(Integer, ForeignKey("seaview.resources.id"), primary_key=True)
+    employee = Column(Integer, ForeignKey("seaview.resources.id"), primary_key=True)
 
 
 class CXProject(Base):
@@ -219,40 +216,12 @@ class CXProject(Base):
     maximum_date = Column(Date, nullable=True)
     owner_id = Column(Integer, ForeignKey("seaview.resources.id"))
     is_active = Column(Boolean, default=True, nullable=False)
-    owner = relationship("CXResource", back_populates="projects")
+    owner = relationship("CXResource", back_populates="projects", single_parent=True)
     tasks = relationship("CXTask", back_populates="project")
     portfolio_id = Column(Integer, ForeignKey("seaview.portfolios.id"), nullable=True)
     portfolio = relationship("CXPortfolio", back_populates="projects")
     programme_id = Column(Integer, ForeignKey("seaview.programmes.id"), nullable=True)
     programme = relationship("CXProgramme", back_populates="projects")
-
-    predecessors = relationship(
-        "CXProject",
-        secondary="seaview.project_dependencies",
-        primaryjoin="CXProject.id==CXProjectDependencies.successor_project_id",
-        secondaryjoin="CXProject.id==CXProjectDependencies.predecessor_project_id",
-        back_populates="successors"
-    )
-
-    successors = relationship(
-        "CXProject",
-        secondary="seaview.project_dependencies",
-        primaryjoin="CXProject.id==CXProjectDependencies.predecessor_project_id",
-        secondaryjoin="CXProject.id==CXProjectDependencies.successor_project_id",
-        back_populates="predecessors"
-    )
-
-    programmes_as_predecessors = relationship(
-        "CXProgramme",
-        secondary="seaview.project_programme_dependencies",
-        backref="projects_as_successors"
-    )
-
-    programmes_as_successors = relationship(
-        "CXProgramme",
-        secondary="seaview.programme_project_dependencies",
-        backref="projects_as_predecessors"
-    )
 
 
 class CXTaskStatus(enum.Enum):
@@ -280,10 +249,27 @@ class CXTaskStatus(enum.Enum):
     BACKLOG = "Backlog"
     IN_PROGRESS = "InProgress"
     COMPLETE = "Complete"
+    CANCELLED = "Cancelled"
+
 
 class CXTaskDependencies(Base):
     """
+    Representation of task dependencies in the system.
 
+    This class is used to define the relationship between tasks, specifying
+    which task is a predecessor and which is a successor. It serves as a
+    mapping table for establishing dependencies between tasks within a
+    specific database schema. This relationship is defined within the
+    `seaview` schema and enforces a many-to-many relationship between tasks.
+
+    :ivar __tablename__: Name of the table in the database.
+    :type __tablename__: str
+    :ivar __table_args__: Additional arguments specifying schema information for the table.
+    :type __table_args__: dict
+    :ivar predecessor_id: Identifier for the predecessor task in the dependency relationship.
+    :type predecessor_id: int
+    :ivar successor_id: Identifier for the successor task in the dependency relationship.
+    :type successor_id: int
     """
     __tablename__ = "task_dependencies"
     __table_args__ = {"schema": "seaview"}
@@ -293,38 +279,33 @@ class CXTaskDependencies(Base):
 
 class CXTask(Base):
     """
-    Represents a task entity in the database with attributes related to task details, relationships,
-    and overall progress tracking.
+    Represents a task in the system.
 
-    This class models the structure of a task, providing fields for its title, status, project
-    association, and relationships with predecessor and successor tasks. It also tracks various
-    aspects such as task duration, start and end dates, activity status, and progress percentage.
-    These attributes facilitate the management and organization of tasks in the associated
-    project schema.
+    The CXTask class defines the structure of a task entity within the application. This includes task-specific
+    attributes such as title, status, associated project, and other related properties. It utilizes SQLAlchemy for
+    ORM functionality and interacts with other entities like CXProject to establish relationships. The class is
+    designed to capture all relevant details about a task for effective tracking and management in the system.
 
-    :ivar id: The unique identifier for the task.
+    :ivar id: Unique identifier for the task.
     :type id: int
-    :ivar title: The title or name of the task.
+    :ivar title: Title or name of the task.
     :type title: str
-    :ivar status: The status of the task, defined by the CXTaskStatus enumeration.
+    :ivar status: Current status of the task. Defined as an Enum of CXTaskStatus.
     :type status: CXTaskStatus
-    :ivar project_id: The identifier of the project related to this task.
-    :type project_id: int
-    :ivar is_active: Indicates whether the task is currently active.
+    :ivar project_id: Reference to the project this task is part of.
+    :type project_id: int or None
+    :ivar is_active: Indicates whether the task is active.
     :type is_active: bool
-    :ivar start_date: The starting date of the task.
-    :type start_date: datetime.date
-    :ivar duration: The duration of the task in days.
+    :ivar start_date: Scheduled start date of the task.
+    :type start_date: datetime.date or None
+    :ivar duration: Duration of the task, in days.
     :type duration: float
-    :ivar end_date: The ending date of the task.
-    :type end_date: datetime.date
-    :ivar progress: The completion progress of the task as a percentage.
+    :ivar end_date: Scheduled end date of the task.
+    :type end_date: datetime.date or None
+    :ivar progress: Progress percentage of the task.
     :type progress: float
-    :ivar predecessors: List of predecessor tasks that must be completed before this task.
-    :type predecessors: List[CXTask]
-
-    :ivar project: The project associated with this task.
-    :type project: CXProject
+    :ivar project: Relationship that links this task to its associated project (CXProject).
+    :type project: CXProject or None
     """
     __tablename__ = "tasks"
     __table_args__ = {"schema": "seaview"}
@@ -337,14 +318,11 @@ class CXTask(Base):
     duration = Column(Double, default=1.0)
     end_date = Column(Date)
     progress = Column(Double, default=0.0)
-
-    predecessors = relationship("CXTask",
-                                secondary="seaview.task_dependencies",
-                                primaryjoin="CXTask.id==CXTaskDependencies.successor_id",
-                                secondaryjoin="CXTask.id==CXTaskDependencies.predecessor_id",
-                                backref="successors")
+    parent_id = Column(Integer, ForeignKey("seaview.tasks.id"), nullable=True)
 
     project = relationship("CXProject", back_populates="tasks")
+    changes = relationship('CXTaskChange', back_populates="task")
+    # children = relationship("CXTask", back_populates="parent", cascade="all, delete-orphan")
 
 
 class CXPortfolio(Base):
@@ -384,9 +362,9 @@ class CXPortfolio(Base):
     owner_id = Column(Integer, ForeignKey("seaview.resources.id"))
     is_active = Column(Boolean, default=True, nullable=False)
 
-    owner = relationship("CXResource", back_populates="portfolios")
-    projects = relationship("CXProject")
-    programmes = relationship("CXProgramme")
+    owner = relationship("CXResource", back_populates="portfolios", cascade="all, delete-orphan", single_parent=True)
+    projects = relationship("CXProject", back_populates="portfolio", cascade="all, delete-orphan")
+    programmes = relationship("CXProgramme", back_populates="portfolio", cascade="all, delete-orphan")
 
 
 class CXProgramme(Base):
@@ -421,10 +399,10 @@ class CXProgramme(Base):
     start_date = Column(Date)
     owner_id = Column(Integer, ForeignKey("seaview.resources.id"))
     is_active = Column(Boolean, default=True, nullable=False)
-    owner = relationship("CXResource", back_populates="programmes")
-    projects = relationship("CXProject")
+    owner = relationship("CXResource", back_populates="programmes", cascade="all", single_parent=True)
+    projects = relationship("CXProject", back_populates="programme", cascade="all, delete-orphan")
     portfolio_id = Column(Integer, ForeignKey("seaview.portfolios.id"), nullable=True)
-    portfolio = relationship("CXPortfolio", back_populates="programmes")
+    portfolio = relationship("CXPortfolio", back_populates="programmes", cascade="all")
 
 class CXTaskChange(Base):
     """
@@ -461,9 +439,6 @@ class CXTaskChange(Base):
     old_values_json = Column(String)
     new_value_json = Column(String)
     task = relationship("CXTask", back_populates="changes")
-    changer = relationship("CXResource")
-    # Add reverse relationship in the CXTask class
-    CXTask.changes = relationship("CXTaskChange", back_populates="task", cascade="all, delete-orphan")
 
 class CXProjectGanttPermissions(Base):
     """
@@ -653,4 +628,12 @@ def generate_sql(db_config):
     # Set schema for metadata
     Base.metadata.schema = "seaview"
     Base.metadata.create_all(engine)
+    # Manually order table creation to prevent dependency issues
+    # for table in [CXResource, CXPortfolio, CXProgramme, CXProject, CXTask,
+    #               CXTaskDependencies, CXProjectDependencies,
+    #               CXPredecessorProgrammeProjectDependencies, CXPredecessorProjectProgrammeDependencies]:
+    #     table.__table__.create(bind=engine, checkfirst=True)
+
+    Base.registry.configure()
     print("\n".join(str(table) for table in Base.metadata.tables.values()))
+

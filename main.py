@@ -2,7 +2,7 @@ from db_utils import test_connection
 from db_schema import generate_sql
 from config import DB_ADMIN_CONFIG
 
-from db_operations import DBOperations
+from db_operations import DBOperations, DBExampleProjectSetup
 
 if __name__ == "__main__":
     test_connection()
@@ -11,4 +11,5 @@ if __name__ == "__main__":
     db_operator.regenerate_schema('seaview')
     #generate_sql(DB_ADMIN_CONFIG)
     db_operator.setup_user_access('nt_client')
-
+    db_example_generator = DBExampleProjectSetup()
+    db_example_generator.generate_example_data(db_operator)

@@ -11,6 +11,14 @@ from db_schema import (Base,
                        CXProgramme,
                        CXTaskStatus,
                        ResourceType,
+                       ResourceDepartment,
+                       CXProjectDependencyAssociation,
+                       CXTaskDependencies,
+                       CXProgrammeDependencyAssociation,
+                       CXTaskChange,
+                       CXProjectGanttPermissions,
+                       CXProjectTaskUserSetup,
+                       CXProjectUserSetup,
                        generate_sql)
 
 # # Database connection setup
@@ -41,8 +49,8 @@ class DBOperations:
                            +db_config["password"]+'@'
                            +db_config["host"]+'/'
                            +db_config["dbname"])
-        self._session = self._engine.connect()
-            
+        self._Session = sessionmaker(bind=self._engine)  # Initialize Session factory
+        self._session = self._Session()  # Create session instance
 
     def add_resource(self, name, resource_type):
         """Return the given resource
@@ -55,10 +63,10 @@ class DBOperations:
         try:
             self._session.commit()
             print(f"Added resource: {name}")
-        except IntegrityError:
+        except IntegrityError as e:
             self._session.rollback()
-            print("Error: Could not add resource.")
-        return 
+            print(f"Error: Could not add resource. Reason: {str(e)}")
+        return
 
     def add_project(self, title, owner_id, start_date):
         """
@@ -72,25 +80,36 @@ class DBOperations:
         try:
             self._session.commit()
             print(f"Added project: {title}")
-        except IntegrityError:
+        except IntegrityError as e:
             self._session.rollback()
-            print("Error: Could not add project.")
+            print(f"Error: Could not add project. Reason: {str(e)}")
 
-    def add_task(self, title, status, project_id):
+    def add_task(self, title, status, project_id, start_date=None, end_date=None):
         """
-        :param title: The title of the task to be added.
-        :param status: The status of the task (e.g., pending, completed).
-        :param project_id: The identifier of the project to which the task belongs.
+        Adds a new task to the database session and commits the changes. If any error occurs during
+        the commit, such as an IntegrityError, the transaction is rolled back to maintain the state
+        of the session.
+
+        :param title: Title of the task.
+        :type title: str
+        :param status: Current status of the task.
+        :type status: str
+        :param project_id: Identifier of the project to which the task belongs.
+        :type project_id: int
+        :param start_date: The start date of the task. Optional.
+        :type start_date: datetime or None
+        :param end_date: The end date of the task. Optional.
+        :type end_date: datetime or None
         :return: None
         """
-        task = CXTask(title=title, status=status, project_id=project_id)
+        task = CXTask(title=title, status=status, project_id=project_id, start_date=start_date, end_date=end_date)
         self._session.add(task)
         try:
             self._session.commit()
             print(f"Added task: {title}")
-        except IntegrityError:
+        except IntegrityError as e:
             self._session.rollback()
-            print("Error: Could not add task.")
+            print(f"Error: Could not add task. Reason: {str(e)}")
 
     def list_projects(self):
         """Retrieves and prints a list of all projects from the database.
@@ -125,9 +144,9 @@ class DBOperations:
         try:
             self._session.commit()
             print(f"Added portfolio: {title}")
-        except IntegrityError:
+        except IntegrityError as e:
             self._session.rollback()
-            print("Error: Could not add portfolio.")
+            print(f"Error: Could not add portfolio. Reason: {str(e)}")
 
     def add_programme(self, title, owner_id, start_date):
         """
@@ -141,11 +160,9 @@ class DBOperations:
         try:
             self._session.commit()
             print(f"Added programme: {title}")
-        except IntegrityError:
+        except IntegrityError as e:
             self._session.rollback()
-            print("Error: Could not add programme.")
-            
-    
+            print(f"Error: Could not add programme. Reason: {str(e)}")
 
     def clear_database(self):
         """Clears all data from the database."""
@@ -302,3 +319,104 @@ class DBOperations:
         self.cascade_delete_schema(schema_name)
         generate_sql(self._db_config)
 
+
+class DBExampleProjectSetup:
+
+    def __init__(self, nPortfolios=1, nProgrammes=1, nProjects=4, nTasks=40, nResources=10):
+        """
+
+        """
+        self.nPortfolios = nPortfolios
+        self.nProgrammes = nProgrammes
+        self.nProjects = nProjects
+        self.nTasks = nTasks
+        self.nResources = nResources
+
+    def generate_example_data(self, db_operator):
+        """
+        Generates example data with the specified number of entities and interconnections, including random dependencies.
+    
+        This method creates portfolios, programmes, projects, tasks, and resources,
+        interlinking them in a random fashion. Tasks are provided with random 
+        start and finish dates, and some tasks have dependencies on others.
+    
+        :param db_operator: An instance of DBOperations to interact with the database.
+        """
+        import random
+        from datetime import timedelta
+
+        resource_list = ['PERSON','FACILITY','PRODUCT','GENERIC']
+        task_status_list = ['BLOCKED','BACKLOG','IN_PROGRESS','COMPLETE','CANCELLED']
+        # Create resources
+        resource_ids = []
+        for i in range(self.nResources):
+            resource_name = f"Resource {i + 1}"
+            #resource_type = f"Type {i % 5}"  # Assign some example resource types
+            resource_type = random.choice(resource_list)
+
+            db_operator.add_resource(name=resource_name, resource_type=resource_type)
+            resource_ids.append(resource_name)  # Collecting resource names (or IDs if applicable)
+
+        # Create portfolios
+        portfolio_ids = []
+        for i in range(self.nPortfolios):
+            title = f"Portfolio {i + 1}"
+            goal = f"Goal {i + 1}"
+            start_date = date.today()
+            db_operator.add_portfolio(title=title, goal=goal, owner_id=1, start_date=start_date)
+            portfolio_ids.append(i + 1)  # Collecting dummy IDs for portfolio (assuming sequential IDs)
+
+        # Create programmes
+        programme_ids = []
+        for i in range(self.nProgrammes):
+            title = f"Programme {i + 1}"
+            start_date = date.today()
+            db_operator.add_programme(title=title, owner_id=1, start_date=start_date)
+            programme_ids.append(i + 1)  # Collecting dummy IDs for programmes (assuming sequential IDs)
+
+        # Randomly assign programmes to portfolios
+        for programme_id in programme_ids:
+            random_portfolio_id = random.choice(portfolio_ids)
+            # Assuming a method to link programmes to portfolios exists
+            print(f"Linking programme {programme_id} to portfolio {random_portfolio_id}")
+
+        # Create projects
+        project_ids = []
+        for i in range(self.nProjects):
+            title = f"Project {i + 1}"
+            start_date = date.today()
+            db_operator.add_project(title=title, owner_id=1, start_date=start_date)
+            project_ids.append(i + 1)  # Collecting dummy IDs for projects (assuming sequential IDs)
+
+        # Randomly assign projects to programmes
+        for project_id in project_ids:
+            random_programme_id = random.choice(programme_ids)
+            # Assuming a method to link projects to programmes exists
+            print(f"Linking project {project_id} to programme {random_programme_id}")
+
+        # Create tasks with random start and finish dates
+        task_ids = []
+        for i in range(self.nTasks):
+            task_title = f"Task {i + 1}"
+            status = random.choice(task_status_list)
+            project_id = random.choice(project_ids)  # Assign tasks randomly to projects
+            start_date = date.today() + timedelta(days=random.randint(0, 30))
+            finish_date = start_date + timedelta(days=random.randint(1, 10))  # Ensure finish is after start
+            db_operator.add_task(title=task_title, status=status, project_id=project_id)
+            task_ids.append(i + 1)  # Collecting dummy IDs for tasks (assuming sequential IDs)
+            print(f"Created task: {task_title}, start_date: {start_date}, finish_date: {finish_date}")
+
+        # Create random task dependencies
+        for task_id in task_ids:
+            if random.random() > 0.5:  # 50% chance to create a dependency
+                dependent_task_id = random.choice(task_ids)
+                if dependent_task_id != task_id:  # Avoid self-dependency
+                    # Assuming a method to add task dependencies exists
+                    print(f"Task {task_id} depends on Task {dependent_task_id}")
+
+        # Assign existing resources to tasks
+        for resource_name in resource_ids:
+            assigned_task_id = random.choice(task_ids)
+            print(f"Assigning resource {resource_name} to task {assigned_task_id}")
+
+        print("Example data generation complete.")
