@@ -11,5 +11,9 @@ if __name__ == "__main__":
     db_operator.regenerate_schema('seaview')
     #generate_sql(DB_ADMIN_CONFIG)
     db_operator.setup_user_access('nt_client')
-    db_example_generator = DBExampleProjectSetup()
+    db_example_generator = DBExampleProjectSetup(nPortfolios = 3,
+                                                 nProgrammes = 2,
+                                                 nProjects = 10,
+                                                 nTasks = 500,
+                                                 nResources = 30)
     db_example_generator.generate_example_data(db_operator)

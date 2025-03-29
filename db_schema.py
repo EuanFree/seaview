@@ -8,26 +8,28 @@ from datetime import datetime
 
 Base = declarative_base()
 
-
 class CXTaskResourceAssociation(Base):
     __tablename__ = "task_resource_association"
     __table_args__ = {"schema": "seaview"}
-    task_id = Column(Integer, ForeignKey("seaview.tasks.id"), primary_key=True)
-    resource_id = Column(Integer, ForeignKey("seaview.resources.id"), primary_key=True)
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey("seaview.tasks.id"))
+    resource_id = Column(Integer, ForeignKey("seaview.resources.id"))
 
 class CXProjectDependencyAssociation(Base):
     __tablename__ = "project_dependency_association"
     __table_args__ = {"schema": "seaview"}
-    predecessor_project_id = Column(Integer, ForeignKey("seaview.projects.id"), primary_key=True, nullable=True)
-    predecessor_programme_id = Column(Integer, ForeignKey("seaview.programmes.id"), primary_key=True, nullable=True)
-    successor_project_id = Column(Integer, ForeignKey("seaview.projects.id"), primary_key=True)
+    id = Column(Integer, primary_key=True)
+    predecessor_project_id = Column(Integer, ForeignKey("seaview.projects.id"), nullable=True)
+    predecessor_programme_id = Column(Integer, ForeignKey("seaview.programmes.id"), nullable=True)
+    successor_project_id = Column(Integer, ForeignKey("seaview.projects.id"))
 
 class CXProgrammeDependencyAssociation(Base):
     __tablename__ = "programme_dependency_association"
     __table_args__ = {"schema": "seaview"}
-    predecessor_programme_id = Column(Integer, ForeignKey("seaview.programmes.id"), primary_key=True, nullable=True)
-    predecessor_project_id = Column(Integer, ForeignKey("seaview.projects.id"), primary_key=True, nullable=True)
-    successor_programme_id = Column(Integer, ForeignKey("seaview.programmes.id"), primary_key=True)
+    id = Column(Integer, primary_key=True)
+    predecessor_programme_id = Column(Integer, ForeignKey("seaview.programmes.id"), nullable=True)
+    predecessor_project_id = Column(Integer, ForeignKey("seaview.projects.id"), nullable=True)
+    successor_programme_id = Column(Integer, ForeignKey("seaview.programmes.id"))
 
 
 class ResourceType(enum.Enum):
@@ -137,18 +139,19 @@ class CXResource(Base):
     resource_type = Column(Enum(ResourceType, name="resourcetype", schema="seaview"), nullable=False)
     resource_department = Column(Enum(ResourceDepartment, name="resourcedepartment", schema="seaview"), nullable=True)
     email = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True, nullable=False)
+    username = Column(String, nullable=True)
+    is_active = Column(Boolean, server_default="true", nullable=False)
     projects = relationship("CXProject", back_populates="owner")
     portfolios = relationship("CXPortfolio", back_populates="owner")
     programmes = relationship("CXProgramme", back_populates="owner")
     #Working pattern
-    works_on_monday = Column(Boolean, default=True, nullable=False)
-    works_on_tuesday = Column(Boolean, default=True, nullable=False)
-    works_on_wednesday = Column(Boolean, default=True, nullable=False)
-    works_on_thursday = Column(Boolean, default=True, nullable=False)
-    works_on_friday = Column(Boolean, default=False, nullable=False)
-    works_on_saturday = Column(Boolean, default=False, nullable=False)
-    works_on_sunday = Column(Boolean, default=False, nullable=False)
+    works_on_monday = Column(Boolean, server_default="true", nullable=False)
+    works_on_tuesday = Column(Boolean, server_default="true", nullable=False)
+    works_on_wednesday = Column(Boolean, server_default="true", nullable=False)
+    works_on_thursday = Column(Boolean, server_default="true", nullable=False)
+    works_on_friday = Column(Boolean, server_default="false", nullable=False)
+    works_on_saturday = Column(Boolean, server_default="false", nullable=False)
+    works_on_sunday = Column(Boolean, server_default="false", nullable=False)
 
 
 class CXManagerEmployeeAssociation(Base):
@@ -211,11 +214,12 @@ class CXProject(Base):
     __table_args__ = {"schema": "seaview"}
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
-    start_date = Column(Date)
-    minimum_date = Column(Date, nullable=True)
-    maximum_date = Column(Date, nullable=True)
+    start_date = Column(DateTime)
+    end_date = Column(DateTime)
+    duration = Column(Double)
     owner_id = Column(Integer, ForeignKey("seaview.resources.id"))
-    is_active = Column(Boolean, default=True, nullable=False)
+    is_active = Column(Boolean, server_default="true", nullable=False)
+    overall_budget = Column(Double, default=0.0)
     owner = relationship("CXResource", back_populates="projects", single_parent=True)
     tasks = relationship("CXTask", back_populates="project")
     portfolio_id = Column(Integer, ForeignKey("seaview.portfolios.id"), nullable=True)
@@ -250,6 +254,8 @@ class CXTaskStatus(enum.Enum):
     IN_PROGRESS = "InProgress"
     COMPLETE = "Complete"
     CANCELLED = "Cancelled"
+    RETIRED = "Retired"
+    DEFERRED = "Deferred"
 
 
 class CXTaskDependencies(Base):
@@ -275,6 +281,9 @@ class CXTaskDependencies(Base):
     __table_args__ = {"schema": "seaview"}
     predecessor_id = Column(Integer, ForeignKey("seaview.tasks.id"), primary_key=True)
     successor_id = Column(Integer, ForeignKey("seaview.tasks.id"), primary_key=True)
+    lag = Column(Double, default=0)
+
+
 
 
 class CXTask(Base):
@@ -313,15 +322,17 @@ class CXTask(Base):
     title = Column(String, nullable=False)
     status = Column(Enum(CXTaskStatus, name="status", schema="seaview"), nullable=False)
     project_id = Column(Integer, ForeignKey("seaview.projects.id"))
-    is_active = Column(Boolean, default=True, nullable=False)
-    start_date = Column(Date)
+    is_active = Column(Boolean, server_default="true", nullable=False)
+    start_date = Column(DateTime)
     duration = Column(Double, default=1.0)
-    end_date = Column(Date)
+    end_date = Column(DateTime)
     progress = Column(Double, default=0.0)
     parent_id = Column(Integer, ForeignKey("seaview.tasks.id"), nullable=True)
-
+    budget = Column(Double, default=0.0)
+    spend = Column(Double, default=0.0)
     project = relationship("CXProject", back_populates="tasks")
     changes = relationship('CXTaskChange', back_populates="task")
+
     # children = relationship("CXTask", back_populates="parent", cascade="all, delete-orphan")
 
 
@@ -358,9 +369,11 @@ class CXPortfolio(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
     goal = Column(String)
-    start_date = Column(Date)
+    start_date = Column(DateTime)
+    end_date = Column(DateTime)
+    duration = Column(Double)
     owner_id = Column(Integer, ForeignKey("seaview.resources.id"))
-    is_active = Column(Boolean, default=True, nullable=False)
+    is_active = Column(Boolean, server_default="true", nullable=False)
 
     owner = relationship("CXResource", back_populates="portfolios", cascade="all, delete-orphan", single_parent=True)
     projects = relationship("CXProject", back_populates="portfolio", cascade="all, delete-orphan")
@@ -396,9 +409,12 @@ class CXProgramme(Base):
     __table_args__ = {"schema": "seaview"}
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
-    start_date = Column(Date)
+    start_date = Column(DateTime)
+    end_date = Column(DateTime)
+    duration = Column(Double)
     owner_id = Column(Integer, ForeignKey("seaview.resources.id"))
-    is_active = Column(Boolean, default=True, nullable=False)
+    is_active = Column(Boolean, server_default="true", nullable=False)
+    overall_budget = Column(Double, default=0.0)
     owner = relationship("CXResource", back_populates="programmes", cascade="all", single_parent=True)
     projects = relationship("CXProject", back_populates="programme", cascade="all, delete-orphan")
     portfolio_id = Column(Integer, ForeignKey("seaview.portfolios.id"), nullable=True)
@@ -427,8 +443,6 @@ class CXTaskChange(Base):
     :type new_value_json: str
     :ivar task: A relationship linking this change to the associated task.
     :type task: CXTask
-    :ivar changer: A relationship linking this change to the resource that made it.
-    :type changer: CXResource
     """
     __tablename__ = "task_changes"
     __table_args__ = {"schema": "seaview"}
@@ -477,12 +491,12 @@ class CXProjectGanttPermissions(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("seaview.resources.id"))
     project_id = Column(Integer, ForeignKey("seaview.projects.id"))
-    write_permission = Column(Boolean, default=True, nullable=False)
-    add_permission = Column(Boolean, default=True, nullable=False)
-    write_on_parent_permission = Column(Boolean, default=True, nullable=False)
-    cannot_close_task_if_issue_open_permission = Column(Boolean, default=True, nullable=False)
-    can_add_permission = Column(Boolean, default=True, nullable=False)
-    can_delete_permission = Column(Boolean, default=True, nullable=False)
+    write_permission = Column(Boolean, server_default="true", nullable=False)
+    add_permission = Column(Boolean, server_default="true", nullable=False)
+    write_on_parent_permission = Column(Boolean, server_default="true", nullable=False)
+    cannot_close_task_if_issue_open_permission = Column(Boolean, server_default="true", nullable=False)
+    can_add_permission = Column(Boolean, server_default="true", nullable=False)
+    can_delete_permission = Column(Boolean, server_default="true", nullable=False)
 
 class CXProjectTaskUserSetup(Base):
     """
@@ -510,7 +524,7 @@ class CXProjectTaskUserSetup(Base):
     user_id = Column(Integer, ForeignKey("seaview.resources.id"))
     project_id = Column(Integer, ForeignKey("seaview.projects.id"))
     task_id = Column(Integer, ForeignKey("seaview.tasks.id"))
-    collapsed = Column(Boolean, default=False, nullable=False)
+    collapsed = Column(Boolean, server_default="false", nullable=False)
 
 class CXViewType(enum.Enum):
     """
@@ -559,6 +573,40 @@ class CXViewType(enum.Enum):
 #     successor_project = relationship("CXProject", foreign_keys=[successor_project_id], back_populates="predecessors")
 
 
+class CXProjectZoomLevels(enum.Enum):
+    """
+    Enumeration representing different time intervals.
+
+    This Enum is used to define a set of constant values, representing specific
+    time intervals that may be used in a broader context, such as filtering or
+    categorizing data by these periods.
+
+    :ivar DAYS3: Represents a 3-day time interval.
+    :type DAYS3: str
+    :ivar WEEK1: Represents a 1-week time interval.
+    :type WEEK1: str
+    :ivar WEEK2: Represents a 2-week time interval.
+    :type WEEK2: str
+    :ivar MONTH1: Represents a 1-month time interval.
+    :type MONTH1: str
+    :ivar QUARTER1: Represents a 1-quarter (3 months) time interval.
+    :type QUARTER1: str
+    :ivar QUARTER2: Represents a 2-quarter (6 months) time interval.
+    :type QUARTER2: str
+    :ivar YEAR1: Represents a 1-year time interval.
+    :type YEAR1: str
+    :ivar YEAR2: Represents a 2-year time interval.
+    :type YEAR2: str
+    """
+    DAYS3 = "3d"
+    WEEK1 = "1w"
+    WEEK2 = "2w"
+    MONTH1 = "1M"
+    QUARTER1 = "1Q"
+    QUARTER2 = "2Q"
+    YEAR1 = "1y"
+    YEAR2 = "2y"
+
 class CXProjectUserSetup(Base):
     """
     Represents a user's project view options, including preferences for zoom level and start date.
@@ -585,7 +633,7 @@ class CXProjectUserSetup(Base):
     user_id = Column(Integer, ForeignKey("seaview.resources.id"))
     view_type = Column(Enum(CXViewType, name="view_type", schema="seaview"), default=CXViewType.PROJECT)
     project_id = Column(Integer, ForeignKey("seaview.projects.id"))
-    zoom_level = Column(String)
+    zoom_level = Column(Enum(CXProjectZoomLevels, name="zoom_level", schema="seaview"), server_default="MONTH1", default=CXProjectZoomLevels.MONTH1)
     start_date = Column(Date)
 
 
